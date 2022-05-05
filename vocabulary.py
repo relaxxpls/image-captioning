@@ -11,24 +11,24 @@ class Vocabulary:
         self.idx2word = {}
         self.len = 0
 
-        self.add_word("<PAD>")
-        self.add_word("<SOS>")
-        self.add_word("<EOS>")
-        self.add_word("<UNK>")
+        self.pad = self.add_word("<PAD>")
+        self.unk = self.add_word("<UNK>")
+        self.sos = self.add_word("<SOS>")
+        self.eos = self.add_word("<EOS>")
 
     def add_word(self, word):
-        if word in self.word2idx:
-            return
-
-        self.word2idx[word] = self.len
-        self.idx2word[self.len] = word
-        self.len += 1
-
-    def __call__(self, word):
         if word not in self.word2idx:
-            word = "<UNK>"
+            self.word2idx[word] = self.len
+            self.idx2word[self.len] = word
+            self.len += 1
 
         return self.word2idx[word]
+
+    def __call__(self, word):
+        return self.word2idx.get(word, self.unk)
+
+    def __getitem__(self, idx):
+        return self.idx2word.get(idx)
 
     def __len__(self):
         return self.len
@@ -63,10 +63,8 @@ class CocoCaptionsVocabulary(Vocabulary):
             f"{self.len} words of {len(counter)} total."
         )
 
-    def numericalize(self, text):
-        tokenized_text = self.tokenize(text)
+    def encode(self, text):
+        encoded_text = [self(token) for token in self.tokenize(text)]
+        encoded_text = [self.sos] + encoded_text + [self.eos]
 
-        return [
-            self.word2idx[token] if token in self.word2idx else self.word2idx["<UNK>"]
-            for token in tokenized_text
-        ]
+        return encoded_text
