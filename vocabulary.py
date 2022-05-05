@@ -1,6 +1,7 @@
 from collections import Counter
 
 import spacy
+from pycocotools.coco import COCO
 from tqdm import tqdm
 
 
@@ -34,30 +35,31 @@ class Vocabulary:
 
 
 class CocoCaptionsVocabulary(Vocabulary):
-    def __init__(self, coco, freq_threshold=5):
+    def __init__(self, annotation_file, freq_threshold=5):
         super().__init__()
 
+        self.coco = COCO(annotation_file)
         self.nlp = spacy.load("en_core_web_sm")
-        self.__build_vocab(coco, freq_threshold)
+        self.freq_threshold = freq_threshold
+        self.__build_vocab()
 
     def tokenize(self, text):
-        # return nltk.tokenize.word_tokenize(text)
         return [tok.text.lower() for tok in self.nlp.tokenizer(text)]
 
-    def __build_vocab(self, coco, freq_threshold=5):
+    def __build_vocab(self):
         counter = Counter()
 
-        for value in tqdm(coco.anns.values()):
+        for value in tqdm(self.coco.anns.values()):
             tokens = self.tokenize(value["caption"])
             counter.update(tokens)
 
         for word, cnt in counter.items():
-            if cnt >= freq_threshold:
+            if cnt >= self.freq_threshold:
                 # ? If count of word in dataset is greater than freq_threshold, add it to vocab.
                 self.add_word(word)
 
         print(
-            f"Selecting words with >= {freq_threshold} appearances ie "
+            f"Selecting words with >= {self.freq_threshold} appearances ie "
             f"{self.len} words of {len(counter)} total."
         )
 
