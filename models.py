@@ -2,55 +2,81 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
+from vocabulary import CocoCaptionsVocabulary
+
 
 class EncoderCNN(nn.Module):
     def __init__(self, embed_size):
         super().__init__()
 
-        resnet = models.resnet50(pretrained=True)
-        for param in resnet.parameters():
-            param.requires_grad_(False)
+        # * As we are not using auxiliary loss, we set aux_logits to False.
+        self.inception = models.inception_v3(pretrained=True, aux_logits=False)
+        self.inception.fc = nn.Linear(self.inception.fc.in_features, embed_size)
 
-        modules = list(resnet.children())[:-1]
-        self.resnet = nn.Sequential(*modules)
-        self.embed = nn.Linear(resnet.fc.in_features, embed_size)
-        self.embed.weight.data.normal_(0.0, 0.02)
-        self.embed.bias.data.fill_(0)
-        self.batch = nn.BatchNorm1d(embed_size, momentum=0.01)
+        # ? Freeze model parameters except those of the last layer.
+        for name, param in self.inception.named_parameters():
+            if name in ["fc.weight", "fc.bias"]:
+                param.requires_grad = True
+            param.requires_grad = False
+
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, images):
-        features = self.resnet(images)
-        features = features.view(features.size(0), -1)
-        features = self.batch(self.embed(features))
+        features = self.inception(images)
 
-        return features
+        return self.dropout(self.relu(features))
 
 
 class DecoderRNN(nn.Module):
-    def __init__(self, embed_size, hidden_size, vocab_size, num_layers=1):
+    def __init__(self, embed_size, hidden_size, vocab_size):
         super().__init__()
 
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
-        self.embed_size = embed_size
-        self.drop_prob = 0.2
-        self.vocabulary_size = vocab_size
-        self.lstm = nn.LSTM(
-            self.embed_size, self.hidden_size, self.num_layers, batch_first=True
-        )
-        self.dropout = nn.Dropout(self.drop_prob)
-
-        self.embed = nn.Embedding(self.vocabulary_size, self.embed_size)
-        self.embed.weight.data.uniform_(-0.1, 0.1)
-
-        self.linear = nn.Linear(hidden_size, self.vocabulary_size)
-        self.linear.weight.data.uniform_(-0.1, 0.1)
-        self.linear.bias.data.fill_(0)
+        self.embed = nn.Embedding(vocab_size, embed_size)
+        self.lstm = nn.LSTM(embed_size, hidden_size, 1)
+        self.linear = nn.Linear(hidden_size, vocab_size)
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, features, captions):
         embeddings = self.embed(captions)
-        features = features.unsqueeze(1)
-        embeddings = torch.cat((features, embeddings[:, :-1, :]), dim=1)
-        hiddens, c = self.lstm(embeddings)
+        embeddings = self.dropout(embeddings)
+        embeddings = torch.cat((features.unsqueeze(0), embeddings), dim=0)
+        hiddens, _ = self.lstm(embeddings)
         outputs = self.linear(hiddens)
+
         return outputs
+
+
+class EncoderDecoderModel(nn.Module):
+    def __init__(self, embed_size, hidden_size, vocab_size):
+        super().__init__()
+
+        self.encoderCNN = EncoderCNN(embed_size)
+        self.decoderRNN = DecoderRNN(embed_size, hidden_size, vocab_size)
+
+    def forward(self, images, captions):
+        features = self.encoderCNN(images)
+        outputs = self.decoderRNN(features, captions)
+
+        return outputs
+
+    @torch.no_grad()
+    def get_caption(
+        self, image: torch.Tensor, vocabulary: CocoCaptionsVocabulary, max_length=50
+    ):
+        result = []
+        x = self.encoderCNN(image).unsqueeze(0)
+        states = None
+
+        for _ in range(max_length):
+            hiddens, states = self.decoderRNN.lstm(x, states)
+            output = self.decoderRNN.linear(hiddens.squeeze(0))
+            predicted = output.argmax(1)
+            x = self.decoderRNN.embed(predicted).unsqueeze(0)
+
+            predicted_word = vocabulary.idx2word[predicted.item()]
+            result.append(predicted_word)
+            if predicted_word == "<EOS>":
+                break
+
+        return result
