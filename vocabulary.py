@@ -28,7 +28,7 @@ class Vocabulary:
         return self.word2idx.get(word, self.unk)
 
     def __getitem__(self, idx):
-        return self.idx2word.get(idx)
+        return self.idx2word.get(idx, "")
 
     def __len__(self):
         return self.len
@@ -68,3 +68,8 @@ class CocoCaptionsVocabulary(Vocabulary):
         encoded_text = [self.sos] + encoded_text + [self.eos]
 
         return encoded_text
+
+    def decode(self, encoded_text):
+        text = " ".join([self[idx] for idx in encoded_text[1:-1]])
+
+        return text
