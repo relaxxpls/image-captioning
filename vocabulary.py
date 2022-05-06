@@ -1,6 +1,6 @@
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 import spacy
 import torch
@@ -74,8 +74,11 @@ class CocoCaptionsVocabulary(Vocabulary):
         return torch.LongTensor(encoded_text)
 
     def decode(self, encoded_text: torch.LongTensor) -> str:
+        encoded_text = encoded_text.tolist()
+        # ? Remove PAD tokens
+        encoded_text = [token for token in encoded_text if token != self.pad]
         # ? Remove SOS and EOS tokens
-        encoded_text = encoded_text[1:-1].tolist()
+        encoded_text = encoded_text[1:-1]
         tokens = [self[idx] for idx in encoded_text]
         text = " ".join(tokens)
 

@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import torch
 from PIL import Image
 from pycocotools.coco import COCO
+from torch.nn.utils.rnn import pad_sequence
 from torchvision.datasets.vision import VisionDataset
 
 
@@ -35,3 +37,17 @@ class CocoCaptions(VisionDataset):
 
     def __len__(self):
         return len(self.ids)
+
+
+class CocoCollate:
+    def __init__(self, padding_value):
+        self.padding_value = padding_value
+
+    def __call__(self, batch):
+        images, captions = zip(*batch)
+        images = torch.stack(images, 0)
+        targets = pad_sequence(
+            captions, batch_first=True, padding_value=self.padding_value
+        )
+
+        return images, targets

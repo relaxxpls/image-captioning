@@ -24,8 +24,10 @@ class EncoderCNN(nn.Module):
 
     def forward(self, images):
         features = self.inception(images)
+        features = self.relu(features)
+        features = self.dropout(features)
 
-        return self.dropout(self.relu(features))
+        return features
 
 
 class DecoderRNN(nn.Module):
@@ -33,14 +35,17 @@ class DecoderRNN(nn.Module):
         super().__init__()
 
         self.embed = nn.Embedding(vocab_size, embed_size)
-        self.lstm = nn.LSTM(embed_size, hidden_size, 1)
-        self.linear = nn.Linear(hidden_size, vocab_size)
         self.dropout = nn.Dropout(0.5)
+        self.lstm = nn.LSTM(embed_size, hidden_size, 1, batch_first=True)
+        self.linear = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, features, captions):
         embeddings = self.embed(captions)
         embeddings = self.dropout(embeddings)
-        embeddings = torch.cat((features.unsqueeze(0), embeddings), dim=0)
+
+        features = features.unsqueeze(1)
+        embeddings = torch.cat((features, embeddings), dim=1)
+
         hiddens, _ = self.lstm(embeddings)
         outputs = self.linear(hiddens)
 

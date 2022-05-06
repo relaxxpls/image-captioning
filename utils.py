@@ -17,7 +17,7 @@ def train(
     save_dir: Path,
     log_interval=200,
 ):
-    print("Training started...")
+    tqdm.write("Training started...")
     model.train()
     losses = []
 
@@ -28,22 +28,20 @@ def train(
             optimizer.zero_grad()
 
             images, captions = images.to(device), captions.to(device)
-            outputs = model(images, captions[:-1])
+            outputs = model(images, captions[:, :-1])
+            outputs = outputs.view(outputs.shape[0], outputs.shape[2], outputs.shape[1])
 
-            loss = criterion(
-                outputs.reshape(-1, outputs.shape[2]), captions.reshape(-1)
-            )
+            loss = criterion(outputs, captions)
             loss.backward()
             optimizer.step()
 
             epoch_loss += loss.item()
             batch_idx += 1
             if batch_idx % log_interval == 0:
-                print(
-                    f"Epoch: {epoch}\t"
-                    f"[{batch_idx * len(images)}/{len(train_loader.dataset)}"
-                    f" ({100. * batch_idx / len(train_loader):.0f}%)]\t"
-                    f"Loss: {loss.item() / len(images):.6f}"
+                tqdm.write(
+                    f"Epoch {epoch}/{epochs}\t| Batch {batch_idx}/{len(images)} "
+                    f"({100.0 * batch_idx / len(train_loader):.1f}%)\t| "
+                    f"Loss: {loss.item():.6f}"
                 )
 
         losses.append(epoch_loss / len(train_loader.dataset))
