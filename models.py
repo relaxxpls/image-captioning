@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
-from vocabulary import CocoCaptionsVocabulary
-
 
 class EncoderCNN(nn.Module):
     def __init__(self, embed_size):
@@ -64,24 +62,3 @@ class EncoderDecoderModel(nn.Module):
         outputs = self.decoderRNN(features, captions)
 
         return outputs
-
-    @torch.no_grad()
-    def get_caption(
-        self, image: torch.Tensor, vocabulary: CocoCaptionsVocabulary, max_length=50
-    ):
-        result = []
-        x = self.encoderCNN(image).unsqueeze(0)
-        states = None
-
-        for _ in range(max_length):
-            hiddens, states = self.decoderRNN.lstm(x, states)
-            output = self.decoderRNN.linear(hiddens.squeeze(0))
-            predicted = output.argmax(1)
-            x = self.decoderRNN.embed(predicted).unsqueeze(0)
-
-            predicted_word = vocabulary.idx2word[predicted.item()]
-            result.append(predicted_word)
-            if predicted_word == "<EOS>":
-                break
-
-        return result

@@ -1,10 +1,14 @@
 from pathlib import Path
+from typing import Tuple
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+from models import EncoderDecoderModel
+from vocabulary import CocoCaptionsVocabulary
 
 
 def train(
@@ -60,21 +64,56 @@ def train(
 def valid(model, valid_loader, criterion, device):
     model.eval()
 
-    # valid_loss = 0
+    valid_loss = 0
     captions = []
 
-    for images, captions in tqdm(enumerate(valid_loader), leave=False):
+    for batch_idx, (images, captions) in tqdm(enumerate(valid_loader), leave=False):
         images, captions = images.to(device), captions.to(device)
 
-        # outputs = model(images, captions[:-1])
+        # outputs = model(images, captions[:, :-1])
+        # captions_predicted = [predict(images[i]) for ]
+        # outputs = outputs.view(outputs.shape[0], outputs.shape[2], outputs.shape[1])
+        # loss = criterion(outputs, captions)
         # loss = criterion(denoised, pure)
         # valid_loss += loss.item()
 
-    #         for n, d in zip(noisy, denoised):
-    #             noisy_imgs.append(n.cpu())
-    #             denoised_imgs.append(d.cpu())
-
-    # valid_loss /= len(valid_loader.dataset)
-    # print(f"Average test loss: {valid_loss:.6f}")
+    valid_loss /= len(valid_loader)
+    print(f"Valid loss: {valid_loss:.4f}")
 
     return captions
+
+
+@torch.no_grad()
+def predict(
+    model: EncoderDecoderModel,
+    image: torch.Tensor,
+    vocabulary: CocoCaptionsVocabulary,
+    max_length=20,
+    device="cpu",
+):
+    result = []
+    states: Tuple[torch.Tensor, torch.Tensor] = None
+
+    image = image.unsqueeze(0).to(device)
+    x = model.encoderCNN(image)
+    x = x.unsqueeze(1)
+
+    for _ in range(max_length):
+        hiddens, states = model.decoderRNN.lstm(x, states)
+        hiddens = hiddens.squeeze(1)
+        outputs = model.decoderRNN.linear(hiddens)
+
+        predicted = outputs.argmax(1)
+        x = model.decoderRNN.embed(predicted)
+        x = x.unsqueeze(1)
+
+        predicted = predicted.item()
+        predicted_word = vocabulary.idx2word[predicted]
+        result.append(predicted_word)
+
+        if predicted == vocabulary.eos:
+            break
+
+    result = " ".join(result)
+
+    return result
